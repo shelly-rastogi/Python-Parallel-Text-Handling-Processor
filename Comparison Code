@@ -1,0 +1,38 @@
+from difflib import SequenceMatcher
+
+COMPARE_RULES = {
+    "ignore_case": True,
+    "min_similarity": 0.65
+}
+
+def preprocess(text, rules):
+    if rules["ignore_case"]:
+        text = text.lower()
+    return text
+
+
+def similarity(a, b):
+    return SequenceMatcher(None, a, b).ratio()
+
+
+def compare_texts_db():
+    conn = sqlite3.connect(DB_NAME)
+    cur = conn.cursor()
+
+    cur.execute("SELECT id, clean_text FROM texts")
+    rows = cur.fetchall()
+
+    matches = []
+
+    for i in range(len(rows)):
+        for j in range(i+1, len(rows)):
+            t1 = preprocess(rows[i][1], COMPARE_RULES)
+            t2 = preprocess(rows[j][1], COMPARE_RULES)
+
+            sim = similarity(t1, t2)
+
+            if sim >= COMPARE_RULES["min_similarity"]:
+                matches.append((rows[i][0], rows[j][0], round(sim, 2)))
+
+    conn.close()
+    return matches
