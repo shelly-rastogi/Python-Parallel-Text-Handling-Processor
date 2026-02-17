@@ -1,0 +1,62 @@
+import sqlite3
+import multiprocessing as mp
+import re
+from functools import partial
+
+DB_NAME = "text_processor.db"
+
+# ---------- RULES ----------
+PROCESS_RULES = {
+    "lowercase": True,
+    "remove_numbers": True,
+    "remove_punctuation": True,
+    "min_word_length": 3
+}
+
+# ---------- CLEAN TEXT ----------
+def clean_text(text, rules):
+    if rules["lowercase"]:
+        text = text.lower()
+
+    if rules["remove_numbers"]:
+        text = re.sub(r"\d+", "", text)
+
+    if rules["remove_punctuation"]:
+        text = re.sub(r"[^\w\s]", "", text)
+
+    words = text.split()
+    if rules["min_word_length"]:
+        words = [w for w in words if len(w) >= rules["min_word_length"]]
+
+    return " ".join(words)
+
+
+def process_chunk(rows, rules):
+    return [(row[0], clean_text(row[1], rules)) for row in rows]
+
+
+def parallel_process_db(workers=4):
+    conn = sqlite3.connect(DB_NAME)
+    cur = conn.cursor()
+
+    cur.execute("SELECT id, raw_text FROM texts")
+    rows = cur.fetchall()
+    conn.close()
+
+    size = len(rows) // workers + 1
+    chunks = [rows[i:i+size] for i in range(0, len(rows), size)]
+
+    with mp.Pool(workers) as pool:
+        results = pool.map(partial(process_chunk, rules=PROCESS_RULES), chunks)
+
+    flat = [item for sublist in results for item in sublist]
+
+    conn = sqlite3.connect(DB_NAME)
+    cur = conn.cursor()
+
+    cur.executemany(
+        "UPDATE texts SET clean_text=? WHERE id=?",
+        [(text, id_) for id_, text in flat]
+    )
+    conn.commit()
+    conn.close()
