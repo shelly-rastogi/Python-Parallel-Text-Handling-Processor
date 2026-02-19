@@ -1,0 +1,115 @@
+import csv
+import sqlite3
+from datetime import datetime
+
+# -----------------------------
+# 1. RULE-BASED KEYWORDS
+# -----------------------------
+positive_words = {
+    "good": 2, "great": 3, "excellent": 4, "happy": 2, "love": 3,
+    "nice": 2, "amazing": 4, "fast": 1, "satisfied": 3, "best": 3
+}
+
+negative_words = {
+    "bad": -2, "terrible": -4, "poor": -2, "slow": -1, "hate": -3,
+    "worst": -4, "sad": -2, "problem": -2, "late": -1, "broken": -3
+}
+
+# -----------------------------
+# 2. SCORING FUNCTION
+# -----------------------------
+def calculate_score(text):
+    score = 0
+    words = text.lower().split()
+
+    for word in words:
+        if word in positive_words:
+            score += positive_words[word]
+        elif word in negative_words:
+            score += negative_words[word]
+
+    return score
+
+
+def get_sentiment(score):
+    if score > 0:
+        return "Positive"
+    elif score < 0:
+        return "Negative"
+    else:
+        return "Neutral"
+
+
+# -----------------------------
+# 3. DATABASE SETUP
+# -----------------------------
+def create_database():
+    try:
+        conn = sqlite3.connect("sentiment_results.db")
+        cursor = conn.cursor()
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS sentiment_results (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            text TEXT,
+            score INTEGER,
+            sentiment TEXT,
+            timestamp TEXT
+        )
+        """)
+
+        conn.commit()
+        return conn, cursor
+
+    except sqlite3.Error as e:
+        print("Database Error:", e)
+        return None, None
+
+
+# -----------------------------
+# 4. PROCESS CSV FILE
+# -----------------------------
+def process_file(file_path):
+    conn, cursor = create_database()
+    if conn is None:
+        return
+
+    try:
+        with open(file_path, "r", encoding="utf-8") as file:
+            reader = csv.reader(file)
+
+            for row in reader:
+                try:
+                    text = row[0]
+                    score = calculate_score(text)
+                    sentiment = get_sentiment(score)
+                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+                    cursor.execute("""
+                        INSERT INTO sentiment_results
+                        (text, score, sentiment, timestamp)
+                        VALUES (?, ?, ?, ?)
+                    """, (text, score, sentiment, timestamp))
+
+                except Exception as row_error:
+                    print("Row Processing Error:", row_error)
+
+            conn.commit()
+
+    except FileNotFoundError:
+        print("Error: File not found.")
+
+    except Exception as e:
+        print("File Error:", e)
+
+    finally:
+        conn.close()
+        print("Processing complete.")
+
+
+# -----------------------------
+# 5. RUN PROGRAM
+# -----------------------------
+if __name__ == "__main__":
+    file_path = "online_retail_real_world.csv"   # Change if needed
+    process_file(file_path)
